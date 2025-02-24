@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/joho/godotenv"
 	"github.com/tealeg/xlsx"
 )
 
@@ -78,7 +79,16 @@ func main() {
 		log.Fatalf("Error writing header to CSV: %v", err)
 	}
 
-	apiKey := ""
+	// Load environment variables
+	if err := godotenv.Load(); err != nil {
+		log.Printf("Warning: .env file not found")
+	}
+
+	apiKey := os.Getenv("YANDEX_API_KEY")
+	if apiKey == "" {
+		log.Fatal("YANDEX_API_KEY environment variable is required")
+	}
+
 	lang := "en-ru"
 	baseURL := "https://dictionary.yandex.net/api/v1/dicservice.json/lookup"
 
