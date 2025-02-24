@@ -10,6 +10,9 @@
 # Output of the go coverage tool
 *.out
 
+# Program output
+*.csv
+
 # Dependency directories (if you are not committing your vendor folder)
 vendor/
 
