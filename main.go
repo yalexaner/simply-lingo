@@ -86,7 +86,10 @@ func main() {
 		log.Fatalf("Failed to create output.csv: %v", err)
 	}
 	defer outputFile.Close()
+	
+	// Create CSV writer with semicolon as delimiter
 	csvWriter := csv.NewWriter(outputFile)
+	csvWriter.Comma = ';' // Set semicolon as delimiter
 	defer csvWriter.Flush()
 
 	// Write header row.
@@ -234,7 +237,9 @@ func main() {
 		// Format for Anki: [sound:filename.mp3]
 		soundField := fmt.Sprintf("[sound:%s]", audioFilename)
 
-		// Write the output row to the CSV.
+
+		// Write the output row to the CSV, ensuring proper handling of fields with semicolons
+		// The csv.Writer will automatically handle quoting and escaping when needed
 		err = csvWriter.Write([]string{word, exampleSentence, soundField, russian})
 		if err != nil {
 			log.Printf("Error writing CSV row for %s: %v", word, err)
