@@ -68,66 +68,66 @@ func main() {
 	}
 	excelFile := os.Args[1]
 
-	// Open the Excel file.
 	xlFile, err := xlsx.OpenFile(excelFile)
 	if err != nil {
 		log.Fatalf("Failed to open Excel file: %v", err)
+		return
 	}
 
-	// Use the first sheet.
 	if len(xlFile.Sheets) == 0 {
 		log.Fatalf("No sheets found in the Excel file.")
+		return
 	}
 	sheet := xlFile.Sheets[0]
 
-	// Prepare the CSV output file.
+	totalWords := 0
+	for _, row := range sheet.Rows {
+		if len(row.Cells) >= 2 {
+			totalWords++
+		}
+	}
+
 	outputFile, err := os.Create("output.csv")
 	if err != nil {
 		log.Fatalf("Failed to create output.csv: %v", err)
+		return
 	}
 	defer outputFile.Close()
-	
-	// Create CSV writer with semicolon as delimiter
+
 	csvWriter := csv.NewWriter(outputFile)
-	csvWriter.Comma = ';' // Set semicolon as delimiter
+	csvWriter.Comma = ';'
 	defer csvWriter.Flush()
 
-	// Write header row.
-	if err := csvWriter.Write([]string{"English Word", "Example sentence", "Sound", "Russian Translation"}); err != nil {
-		log.Fatalf("Error writing header to CSV: %v", err)
-	}
-
-	// Load environment variables
 	if err := godotenv.Load(); err != nil {
 		log.Printf("Warning: .env file not found")
 	}
 
-	// Yandex Dictionary API
 	yandexAPIKey := os.Getenv("YANDEX_API_KEY")
 	if yandexAPIKey == "" {
 		log.Fatal("YANDEX_API_KEY environment variable is required")
+		return
 	}
 
-	// ElevenLabs API
 	elevenLabsAPIKey := os.Getenv("ELEVENLABS_API_KEY")
 	if elevenLabsAPIKey == "" {
 		log.Fatal("ELEVENLABS_API_KEY environment variable is required")
+		return
 	}
 
-	// Create audio directory if it doesn't exist
 	audioDir := "audio"
 	if err := os.MkdirAll(audioDir, 0755); err != nil {
 		log.Fatalf("Failed to create audio directory: %v", err)
+		return
 	}
 
 	lang := "en-ru"
 	yandexBaseURL := "https://dictionary.yandex.net/api/v1/dicservice.json/lookup"
 	elevenLabsBaseURL := "https://api.elevenlabs.io/v1/text-to-speech"
 
-	// Default voice ID - you can change this to any voice from ElevenLabs
-	voiceID := "21m00Tcm4TlvDq8ikWAM" // Default voice - Rachel
+	voiceID := "21m00Tcm4TlvDq8ikWAM"
 
-	// Process each row in the Excel sheet.
+	processedWords := 0
+
 	for _, row := range sheet.Rows {
 		// Skip rows that do not have at least two cells.
 		if len(row.Cells) < 2 {
@@ -138,6 +138,10 @@ func main() {
 		word := row.Cells[0].String()
 		definition := row.Cells[1].String()
 
+		// Print progress information
+		fmt.Printf("\r\033[2KProcessing word: %s\n", word)
+		fmt.Printf("Current progress: %d/%d", processedWords, totalWords)
+
 		// Get an example sentence (using the definition from Excel)
 		exampleSentence := definition
 
@@ -145,19 +149,22 @@ func main() {
 		url := fmt.Sprintf("%s?key=%s&lang=%s&text=%s", yandexBaseURL, yandexAPIKey, lang, word)
 		resp, err := http.Get(url)
 		if err != nil {
-			log.Printf("Error fetching translation for %s: %v", word, err)
+			log.Printf("\r\033[2KError fetching translation for %s: %v", word, err)
+			fmt.Printf("Current progress: %d/%d", processedWords, totalWords)
 			continue
 		}
 		body, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err != nil {
-			log.Printf("Error reading response for %s: %v", word, err)
+			log.Printf("\r\033[2KError reading response for %s: %v", word, err)
+			fmt.Printf("Current progress: %d/%d", processedWords, totalWords)
 			continue
 		}
 
 		var result DicResult
 		if err := json.Unmarshal(body, &result); err != nil {
-			log.Printf("Error parsing JSON for %s: %v", word, err)
+			log.Printf("\r\033[2KError parsing JSON for %s: %v", word, err)
+			fmt.Printf("Current progress: %d/%d", processedWords, totalWords)
 			continue
 		}
 
@@ -186,14 +193,16 @@ func main() {
 
 			reqBody, err := json.Marshal(elevenLabsReq)
 			if err != nil {
-				log.Printf("Error creating request for ElevenLabs for %s: %v", word, err)
+				log.Printf("\r\033[2KError creating request for ElevenLabs for %s: %v", word, err)
+				fmt.Printf("Current progress: %d/%d", processedWords, totalWords)
 				continue
 			}
 
 			// Create the HTTP request
 			req, err := http.NewRequest("POST", fmt.Sprintf("%s/%s", elevenLabsBaseURL, voiceID), bytes.NewBuffer(reqBody))
 			if err != nil {
-				log.Printf("Error creating HTTP request for %s: %v", word, err)
+				log.Printf("\r\033[2KError creating HTTP request for %s: %v", word, err)
+				fmt.Printf("Current progress: %d/%d", processedWords, totalWords)
 				continue
 			}
 
@@ -204,48 +213,57 @@ func main() {
 			client := &http.Client{}
 			resp, err := client.Do(req)
 			if err != nil {
-				log.Printf("Error generating audio for %s: %v", word, err)
+				log.Printf("\r\033[2KError generating audio for %s: %v", word, err)
+				fmt.Printf("Current progress: %d/%d", processedWords, totalWords)
 				continue
 			}
 			defer resp.Body.Close()
 
 			if resp.StatusCode != http.StatusOK {
 				responseBody, _ := io.ReadAll(resp.Body)
-				log.Printf("ElevenLabs API error for %s: %d - %s", word, resp.StatusCode, string(responseBody))
+				log.Printf("\r\033[2KElevenLabs API error for %s: %d - %s", word, resp.StatusCode, string(responseBody))
+				fmt.Printf("Current progress: %d/%d", processedWords, totalWords)
 				continue
 			}
 
 			// Save the audio file
 			audioFile, err := os.Create(audioPath)
 			if err != nil {
-				log.Printf("Error creating audio file for %s: %v", word, err)
+				log.Printf("\r\033[2KError creating audio file for %s: %v", word, err)
+				fmt.Printf("Current progress: %d/%d", processedWords, totalWords)
 				continue
 			}
 
 			_, err = io.Copy(audioFile, resp.Body)
 			audioFile.Close()
 			if err != nil {
-				log.Printf("Error saving audio file for %s: %v", word, err)
+				log.Printf("\r\033[2KError saving audio file for %s: %v", word, err)
+				fmt.Printf("Current progress: %d/%d", processedWords, totalWords)
 				continue
 			}
 
-			log.Printf("Created audio file for: %s", word)
+			log.Printf("\r\033[2KCreated audio file for: %s", word)
+			fmt.Printf("Current progress: %d/%d", processedWords, totalWords)
 		} else {
-			log.Printf("Audio file for %s already exists, skipping generation", word)
+			log.Printf("\r\033[2KAudio file for %s already exists, skipping generation", word)
+			fmt.Printf("Current progress: %d/%d", processedWords, totalWords)
 		}
 
 		// Format for Anki: [sound:filename.mp3]
 		soundField := fmt.Sprintf("[sound:%s]", audioFilename)
 
-
 		// Write the output row to the CSV, ensuring proper handling of fields with semicolons
 		// The csv.Writer will automatically handle quoting and escaping when needed
 		err = csvWriter.Write([]string{word, exampleSentence, soundField, russian})
 		if err != nil {
-			log.Printf("Error writing CSV row for %s: %v", word, err)
+			log.Printf("\r\033[2KError writing CSV row for %s: %v", word, err)
+			fmt.Printf("Current progress: %d/%d", processedWords, totalWords)
 		}
+
+		// Update progress counter and display
+		processedWords++
 	}
 
-	fmt.Println("Processing complete. Output written to output.csv")
+	fmt.Printf("\r\033[2KProcessing %d words complete. Output written to output.csv\n", totalWords)
 	fmt.Printf("Audio files saved to the '%s' directory\n", audioDir)
 }
