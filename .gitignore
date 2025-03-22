@@ -15,6 +15,9 @@
 
 # Dependency directories (if you are not committing your vendor folder)
 vendor/
+audio
+input
+output
 
 # Editor directories and files
 .vscode/
